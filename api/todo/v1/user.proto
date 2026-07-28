@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package todo.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "testdemo/api/todo/v1;v1";
+option java_multiple_files = true;
+option java_package = "todo.v1";
+
+// UserService provides CRUD operations for user resources.
+service UserService {
+  // CreateUser creates a new user.
+  rpc CreateUser (CreateUserRequest) returns (User) {
+    option (google.api.http) = {
+      post: "/v1/users/create"
+      body: "user"
+    };
+  }
+
+  // GetUser returns a user by id.
+  rpc GetUser (GetUserRequest) returns (User) {
+    option (google.api.http) = {
+      get: "/v1/users/{id}"
+    };
+  }
+
+  // ListUsers returns a paginated list of users.
+  rpc ListUsers (ListUsersRequest) returns (UserSet) {
+    option (google.api.http) = {
+      get: "/v1/users/list"
+    };
+  }
+
+  // UpdateUser partially updates a user using a field mask.
+  rpc UpdateUser (UpdateUserRequest) returns (User) {
+    option (google.api.http) = {
+      put: "/v1/users/update"
+      body: "user"
+    };
+  }
+
+  // DeleteUser removes a user by id.
+  rpc DeleteUser (DeleteUserRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/users/{id}"
+    };
+  }
+}
+
+// User is the user resource representation.
+message User {
+  int64 id = 1;
+  string name = 2;
+  string email = 3;
+  // password is write-only; server never returns it.
+  string password = 4 [(google.api.field_behavior) = INPUT_ONLY];
+  google.protobuf.Timestamp create_time = 5;
+  google.protobuf.Timestamp update_time = 6;
+}
+
+// UserSet is a paginated list of users.
+message UserSet {
+  repeated User users = 1;
+  string next_page_token = 2;
+}
+
+message CreateUserRequest {
+  User user = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetUserRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListUsersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string filter = 3;
+  string order_by = 4;
+}
+
+message UpdateUserRequest {
+  User user = 1 [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.FieldMask update_mask = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteUserRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
