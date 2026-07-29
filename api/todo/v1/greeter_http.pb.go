@@ -17,7 +17,7 @@ var _ = new(context.Context)
 
 const _ = http.SupportPackageIsVersion3
 
-const OperationGreeterSayHello = "/helloworld.v1.Greeter/SayHello"
+const OperationGreeterSayHello = "/todo.v1.Greeter/SayHello"
 
 type GreeterHTTPServer interface {
 	// SayHello Sends a greeting

@@ -24,7 +24,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/helloworld.v1.HelloReply'
+                                $ref: '#/components/schemas/todo.v1.HelloReply'
     /v1/greeter/say_hello:
         post:
             tags:
@@ -35,7 +35,7 @@ paths:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/helloworld.v1.HelloRequest'
+                            $ref: '#/components/schemas/todo.v1.HelloRequest'
                 required: true
             responses:
                 "200":
@@ -43,7 +43,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/helloworld.v1.HelloReply'
+                                $ref: '#/components/schemas/todo.v1.HelloReply'
     /v1/todos/create:
         post:
             tags:
@@ -372,18 +372,6 @@ paths:
                                 $ref: '#/components/schemas/todo.v1.DeleteUserReply'
 components:
     schemas:
-        helloworld.v1.HelloReply:
-            type: object
-            properties:
-                message:
-                    type: string
-            description: The response message containing the greetings
-        helloworld.v1.HelloRequest:
-            type: object
-            properties:
-                name:
-                    type: string
-            description: The request message containing the user's name.
         todo.v1.DeleteUserReply:
             type: object
             properties:
@@ -391,6 +379,18 @@ components:
                     type: string
                 info:
                     type: string
+        todo.v1.HelloReply:
+            type: object
+            properties:
+                message:
+                    type: string
+            description: The response message containing the greetings
+        todo.v1.HelloRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+            description: The request message containing the user's name.
         todo.v1.SyncTodoRequest:
             type: object
             properties:

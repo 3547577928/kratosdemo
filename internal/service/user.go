@@ -16,7 +16,6 @@ import (
 // UserService is a user service.
 type UserService struct {
 	v1.UnimplementedUserServiceServer
-
 	uc *biz.UserUsecase
 }
 
@@ -27,10 +26,13 @@ func NewUserService(uc *biz.UserUsecase) *UserService {
 
 // CreateUser creates a new user.
 func (s *UserService) CreateUser(ctx context.Context, req *v1.CreateUserRequest) (*v1.User, error) {
+	//自定义转换函数convertUser，转换成biz层所需要的user
+	//GetUser安全获取User
 	u, err := s.uc.CreateUser(ctx, convertUser(req.GetUser()))
 	if err != nil {
 		return nil, err
 	}
+	//convertUserReply自定义返回函数返回proto定义User
 	return convertUserReply(u), nil
 }
 
@@ -97,9 +99,11 @@ func (s *UserService) ListUsers(ctx context.Context, req *v1.ListUsersRequest) (
 
 // UpdateUser partially updates a user using a field mask.
 func (s *UserService) UpdateUser(ctx context.Context, req *v1.UpdateUserRequest) (*v1.User, error) {
+	//ID不为0，更新字段不为空，否则提示400
 	if req.GetUser().GetId() <= 0 || req.GetUpdateMask() == nil || len(req.GetUpdateMask().GetPaths()) == 0 {
 		return nil, biz.ErrUserInvalidArgument
 	}
+	//根据ID操作表
 	current, err := s.GetUser(ctx, &v1.GetUserRequest{Id: req.GetUser().GetId()})
 	if err != nil {
 		return nil, err

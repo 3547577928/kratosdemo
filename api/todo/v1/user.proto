@@ -9,8 +9,7 @@ import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 
 option go_package = "testdemo/api/todo/v1;v1";
-option java_multiple_files = true;
-option java_package = "todo.v1";
+
 
 // UserService provides CRUD operations for user resources.
 service UserService {

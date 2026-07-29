@@ -512,8 +512,7 @@ const file_todo_v1_user_proto_rawDesc = "" +
 	"\n" +
 	"UpdateUser\x12\x1a.todo.v1.UpdateUserRequest\x1a\r.todo.v1.User\"\x1e\x82\xd3\xe4\x93\x02\x18:\x04user\x1a\x10/v1/users/update\x12Z\n" +
 	"\n" +
-	"DeleteUser\x12\x1a.todo.v1.DeleteUserRequest\x1a\x18.todo.v1.DeleteUserReply\"\x16\x82\xd3\xe4\x93\x02\x10*\x0e/v1/users/{id}B$\n" +
-	"\atodo.v1P\x01Z\x17testdemo/api/todo/v1;v1b\x06proto3"
+	"DeleteUser\x12\x1a.todo.v1.DeleteUserRequest\x1a\x18.todo.v1.DeleteUserReply\"\x16\x82\xd3\xe4\x93\x02\x10*\x0e/v1/users/{id}B\x19Z\x17testdemo/api/todo/v1;v1b\x06proto3"
 
 var (
 	file_todo_v1_user_proto_rawDescOnce sync.Once

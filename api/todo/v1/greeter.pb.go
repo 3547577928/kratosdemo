@@ -116,15 +116,14 @@ var File_todo_v1_greeter_proto protoreflect.FileDescriptor
 
 const file_todo_v1_greeter_proto_rawDesc = "" +
 	"\n" +
-	"\x15todo/v1/greeter.proto\x12\rhelloworld.v1\x1a\x1cgoogle/api/annotations.proto\"\"\n" +
+	"\x15todo/v1/greeter.proto\x12\atodo.v1\x1a\x1cgoogle/api/annotations.proto\"\"\n" +
 	"\fHelloRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"&\n" +
 	"\n" +
 	"HelloReply\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage2\x85\x01\n" +
-	"\aGreeter\x12z\n" +
-	"\bSayHello\x12\x1b.helloworld.v1.HelloRequest\x1a\x19.helloworld.v1.HelloReply\"6\x82\xd3\xe4\x93\x020Z\x1a:\x01*\"\x15/v1/greeter/say_hello\x12\x12/helloworld/{name}Bm\n" +
-	"\x1cdev.kratos.api.helloworld.v1B\x11HelloWorldProtoV1P\x01Z8github.com/go-kratos/service-layout/api/helloworld/v1;v1b\x06proto3"
+	"\amessage\x18\x01 \x01(\tR\amessage2y\n" +
+	"\aGreeter\x12n\n" +
+	"\bSayHello\x12\x15.todo.v1.HelloRequest\x1a\x13.todo.v1.HelloReply\"6\x82\xd3\xe4\x93\x020Z\x1a:\x01*\"\x15/v1/greeter/say_hello\x12\x12/helloworld/{name}B\x19Z\x17testdemo/api/todo/v1;v1b\x06proto3"
 
 var (
 	file_todo_v1_greeter_proto_rawDescOnce sync.Once
@@ -140,12 +139,12 @@ func file_todo_v1_greeter_proto_rawDescGZIP() []byte {
 
 var file_todo_v1_greeter_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_todo_v1_greeter_proto_goTypes = []any{
-	(*HelloRequest)(nil), // 0: helloworld.v1.HelloRequest
-	(*HelloReply)(nil),   // 1: helloworld.v1.HelloReply
+	(*HelloRequest)(nil), // 0: todo.v1.HelloRequest
+	(*HelloReply)(nil),   // 1: todo.v1.HelloReply
 }
 var file_todo_v1_greeter_proto_depIdxs = []int32{
-	0, // 0: helloworld.v1.Greeter.SayHello:input_type -> helloworld.v1.HelloRequest
-	1, // 1: helloworld.v1.Greeter.SayHello:output_type -> helloworld.v1.HelloReply
+	0, // 0: todo.v1.Greeter.SayHello:input_type -> todo.v1.HelloRequest
+	1, // 1: todo.v1.Greeter.SayHello:output_type -> todo.v1.HelloReply
 	1, // [1:2] is the sub-list for method output_type
 	0, // [0:1] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name

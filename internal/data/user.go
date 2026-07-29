@@ -17,6 +17,16 @@ type userRepo struct {
 	data *Data
 }
 
+// NewUserRepo creates a new UserRepo instance implemented with ent.
+func NewUserRepo(data *Data) biz.UserRepo {
+	//返回的是接口
+	return &userRepo{data: data}
+}
+
+func (r *userRepo) client(ctx context.Context) *ent.Client {
+	return r.data.ent
+}
+
 func (r *userRepo) ListUsers(ctx context.Context, opts ...biz.ListOption) ([]*biz.User, error) {
 	options := biz.ListOptions{Limit: 20}
 	for _, opt := range opts {
@@ -97,15 +107,6 @@ func (r *userRepo) ListUsers(ctx context.Context, opts ...biz.ListOption) ([]*bi
 		result = append(result, toBizUser(u))
 	}
 	return result, nil
-}
-
-// NewUserRepo creates a new UserRepo instance implemented with ent.
-func NewUserRepo(data *Data) biz.UserRepo {
-	return &userRepo{data: data}
-}
-
-func (r *userRepo) client(ctx context.Context) *ent.Client {
-	return r.data.ent
 }
 
 func (r *userRepo) FindByID(ctx context.Context, id int64) (*biz.User, error) {
