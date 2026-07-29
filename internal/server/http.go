@@ -5,19 +5,21 @@ import (
 	"testdemo/internal/conf"
 	"testdemo/internal/service"
 
+	"github.com/go-kratos/kratos/contrib/otel/v3/tracing"
 	"github.com/go-kratos/kratos/v3/middleware/recovery"
 	"github.com/go-kratos/kratos/v3/middleware/validate"
 	"github.com/go-kratos/kratos/v3/transport/http"
-
 	"go.einride.tech/aip/fieldbehavior"
 	"google.golang.org/protobuf/proto"
 )
 
-// NewHTTPServer new an HTTP server.
+// NewHTTPServer new an HTTP serve r.
 func NewHTTPServer(c *conf.Server, todo *service.TodoService, greeter *service.GreeterService, user *service.UserService) *http.Server {
 	var opts = []http.ServerOption{
 		http.Middleware(
 			recovery.Recovery(),
+			tracing.Server(),
+			Logmiddle(),
 			validate.Validator(func(req any) error {
 				if msg, ok := req.(proto.Message); ok {
 					if err := fieldbehavior.ValidateRequiredFields(msg); err != nil {

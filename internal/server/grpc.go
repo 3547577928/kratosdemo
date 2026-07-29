@@ -5,6 +5,7 @@ import (
 	"testdemo/internal/conf"
 	"testdemo/internal/service"
 
+	"github.com/go-kratos/kratos/contrib/otel/v3/tracing"
 	"github.com/go-kratos/kratos/v3/middleware/recovery"
 	"github.com/go-kratos/kratos/v3/transport/grpc"
 )
@@ -14,6 +15,8 @@ func NewGRPCServer(c *conf.Server, todo *service.TodoService, greeter *service.G
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
 			recovery.Recovery(),
+			tracing.Server(),
+			Logmiddle(),
 		),
 	}
 	if c.Grpc.Network != "" {
