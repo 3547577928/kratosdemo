@@ -258,6 +258,118 @@ paths:
                 "200":
                     description: OK
                     content: {}
+    /v1/users-list:
+        get:
+            tags:
+                - UserService
+            description: ListUsers returns a paginated list of users.
+            operationId: UserService_ListUsers
+            parameters:
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/todo.v1.UserSet'
+    /v1/users/create:
+        post:
+            tags:
+                - UserService
+            description: CreateUser creates a new user.
+            operationId: UserService_CreateUser
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/todo.v1.User'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/todo.v1.User'
+    /v1/users/update:
+        put:
+            tags:
+                - UserService
+            description: UpdateUser partially updates a user using a field mask.
+            operationId: UserService_UpdateUser
+            parameters:
+                - name: updateMask
+                  in: query
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/todo.v1.User'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/todo.v1.User'
+    /v1/users/{id}:
+        get:
+            tags:
+                - UserService
+            description: GetUser returns a user by id.
+            operationId: UserService_GetUser
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/todo.v1.User'
+        delete:
+            tags:
+                - UserService
+            description: DeleteUser removes a user by id.
+            operationId: UserService_DeleteUser
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/todo.v1.DeleteUserReply'
 components:
     schemas:
         helloworld.v1.HelloReply:
@@ -272,6 +384,13 @@ components:
                 name:
                     type: string
             description: The request message containing the user's name.
+        todo.v1.DeleteUserReply:
+            type: object
+            properties:
+                code:
+                    type: string
+                info:
+                    type: string
         todo.v1.SyncTodoRequest:
             type: object
             properties:
@@ -351,6 +470,36 @@ components:
                         Token used to retrieve the next page via ListTodosRequest.page_token.
                          Empty when there are no more results.
             description: TodoSet is a paginated collection of todo items returned by ListTodos.
+        todo.v1.User:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                email:
+                    type: string
+                password:
+                    writeOnly: true
+                    type: string
+                    description: password is write-only; server never returns it.
+                createTime:
+                    type: string
+                    format: date-time
+                updateTime:
+                    type: string
+                    format: date-time
+            description: User is the user resource representation.
+        todo.v1.UserSet:
+            type: object
+            properties:
+                users:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/todo.v1.User'
+                nextPageToken:
+                    type: string
+            description: UserSet is a paginated list of users.
 tags:
     - name: Greeter
       description: The greeting service definition.
@@ -359,3 +508,5 @@ tags:
         TodoService provides a simple CRUD example for managing todo items.
          It demonstrates unary, server-streaming, and bidirectional-streaming RPCs
          together with AIP-style list filtering, ordering, and pagination.
+    - name: UserService
+      description: UserService provides CRUD operations for user resources.

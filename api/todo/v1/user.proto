@@ -32,7 +32,7 @@ service UserService {
   // ListUsers returns a paginated list of users.
   rpc ListUsers (ListUsersRequest) returns (UserSet) {
     option (google.api.http) = {
-      get: "/v1/users/list"
+      get: "/v1/users-list"
     };
   }
 
@@ -45,11 +45,15 @@ service UserService {
   }
 
   // DeleteUser removes a user by id.
-  rpc DeleteUser (DeleteUserRequest) returns (google.protobuf.Empty) {
+  rpc DeleteUser (DeleteUserRequest) returns (DeleteUserReply) {
     option (google.api.http) = {
       delete: "/v1/users/{id}"
     };
   }
+}
+message DeleteUserReply {
+    int64 code = 1;
+    string info = 2;
 }
 
 // User is the user resource representation.

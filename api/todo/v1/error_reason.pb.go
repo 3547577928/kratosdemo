@@ -27,19 +27,28 @@ const (
 	ErrorReason_TODO_UNSPECIFIED      ErrorReason = 0
 	ErrorReason_TODO_NOT_FOUND        ErrorReason = 1
 	ErrorReason_TODO_INVALID_ARGUMENT ErrorReason = 2
+	ErrorReason_USER_UNSPECIFIED      ErrorReason = 10
+	ErrorReason_USER_NOT_FOUND        ErrorReason = 11
+	ErrorReason_USER_INVALID_ARGUMENT ErrorReason = 12
 )
 
 // Enum value maps for ErrorReason.
 var (
 	ErrorReason_name = map[int32]string{
-		0: "TODO_UNSPECIFIED",
-		1: "TODO_NOT_FOUND",
-		2: "TODO_INVALID_ARGUMENT",
+		0:  "TODO_UNSPECIFIED",
+		1:  "TODO_NOT_FOUND",
+		2:  "TODO_INVALID_ARGUMENT",
+		10: "USER_UNSPECIFIED",
+		11: "USER_NOT_FOUND",
+		12: "USER_INVALID_ARGUMENT",
 	}
 	ErrorReason_value = map[string]int32{
 		"TODO_UNSPECIFIED":      0,
 		"TODO_NOT_FOUND":        1,
 		"TODO_INVALID_ARGUMENT": 2,
+		"USER_UNSPECIFIED":      10,
+		"USER_NOT_FOUND":        11,
+		"USER_INVALID_ARGUMENT": 12,
 	}
 )
 
@@ -74,11 +83,15 @@ var File_todo_v1_error_reason_proto protoreflect.FileDescriptor
 
 const file_todo_v1_error_reason_proto_rawDesc = "" +
 	"\n" +
-	"\x1atodo/v1/error_reason.proto\x12\atodo.v1*R\n" +
+	"\x1atodo/v1/error_reason.proto\x12\atodo.v1*\x97\x01\n" +
 	"\vErrorReason\x12\x14\n" +
 	"\x10TODO_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eTODO_NOT_FOUND\x10\x01\x12\x19\n" +
-	"\x15TODO_INVALID_ARGUMENT\x10\x02B0\n" +
+	"\x15TODO_INVALID_ARGUMENT\x10\x02\x12\x14\n" +
+	"\x10USER_UNSPECIFIED\x10\n" +
+	"\x12\x12\n" +
+	"\x0eUSER_NOT_FOUND\x10\v\x12\x19\n" +
+	"\x15USER_INVALID_ARGUMENT\x10\fB0\n" +
 	"\atodo.v1P\x01Z\x17testdemo/api/todo/v1;v1\xa2\x02\tAPITodoV1b\x06proto3"
 
 var (
