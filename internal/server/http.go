@@ -5,22 +5,29 @@ import (
 	"testdemo/internal/conf"
 	"testdemo/internal/service"
 
+	"github.com/go-kratos/kratos/contrib/otel/v3/metrics"
 	"github.com/go-kratos/kratos/contrib/otel/v3/tracing"
 	"github.com/go-kratos/kratos/v3/middleware/recovery"
 	"github.com/go-kratos/kratos/v3/middleware/validate"
 	"github.com/go-kratos/kratos/v3/transport/http"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.einride.tech/aip/fieldbehavior"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 )
 
-// NewHTTPServer new an HTTP serve r.
-func NewHTTPServer(c *conf.Server, todo *service.TodoService, greeter *service.GreeterService, user *service.UserService) *http.Server {
+// NewHTTPServer new an HTTP serve r.
+func NewHTTPServer(c *conf.Server, mp metric.MeterProvider, todo *service.TodoService, greeter *service.GreeterService, user *service.UserService) *http.Server {
 	var opts = []http.ServerOption{
 		http.Middleware(
 			recovery.Recovery(),
 			tracing.Server(),
 			Logmiddle(),      //日志中间件
 			AuthMiddleware(), //认证中间件
+			metrics.Server(
+				metrics.WithSeconds(metricSeconds),
+				metrics.WithRequests(metricRequests),
+			),
 			validate.Validator(func(req any) error {
 				if msg, ok := req.(proto.Message); ok {
 					if err := fieldbehavior.ValidateRequiredFields(msg); err != nil {
@@ -44,5 +51,9 @@ func NewHTTPServer(c *conf.Server, todo *service.TodoService, greeter *service.G
 	v1.RegisterTodoServiceHTTPServer(srv, todo)
 	v1.RegisterGreeterHTTPServer(srv, greeter)
 	v1.RegisterUserServiceHTTPServer(srv, user)
+	srv.Route("/").GET("/metrics", func(ctx http.Context) error {
+		promhttp.HandlerFor(metricGatherer, promhttp.HandlerOpts{}).ServeHTTP(ctx.Response(), ctx.Request())
+		return nil
+	})
 	return srv
 }

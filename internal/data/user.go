@@ -176,6 +176,7 @@ func (r *userRepo) DeleteUser(ctx context.Context, id int64) error {
 	return err
 }
 func (r *userRepo) Login(ctx context.Context, username string, password string) (*v1.LoginUserReply, error) {
+	//判断username，password字段不为空
 	if strings.TrimSpace(username) == "" || strings.TrimSpace(password) == "" {
 		return nil, biz.ErrUserInvalidArgument
 	}
