@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"testdemo/internal/conf"
+	"testdemo/internal/server"
 
 	"github.com/go-kratos/kratos/contrib/otel/v3/tracing"
 	"github.com/go-kratos/kratos/v3"
@@ -75,6 +76,11 @@ func main() {
 
 	var bc conf.Bootstrap
 	if err := c.Scan(&bc); err != nil {
+		panic(err)
+	}
+
+	// 初始化链路追踪 (连接到本地 Jaeger OTLP 端口)
+	if err := server.InitTracer("localhost:4318", Name); err != nil {
 		panic(err)
 	}
 
