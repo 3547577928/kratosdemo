@@ -21,6 +21,7 @@ const OperationUserServiceCreateUser = "/todo.v1.UserService/CreateUser"
 const OperationUserServiceDeleteUser = "/todo.v1.UserService/DeleteUser"
 const OperationUserServiceGetUser = "/todo.v1.UserService/GetUser"
 const OperationUserServiceListUsers = "/todo.v1.UserService/ListUsers"
+const OperationUserServiceLogin = "/todo.v1.UserService/Login"
 const OperationUserServiceUpdateUser = "/todo.v1.UserService/UpdateUser"
 
 type UserServiceHTTPServer interface {
@@ -32,6 +33,8 @@ type UserServiceHTTPServer interface {
 	GetUser(context.Context, *GetUserRequest) (*User, error)
 	// ListUsers ListUsers returns a paginated list of users.
 	ListUsers(context.Context, *ListUsersRequest) (*UserSet, error)
+	// Login使用post来请求token
+	Login(context.Context, *LoginUserRequest) (*LoginUserReply, error)
 	// UpdateUser UpdateUser partially updates a user using a field mask.
 	UpdateUser(context.Context, *UpdateUserRequest) (*User, error)
 }
@@ -43,6 +46,7 @@ func RegisterUserServiceHTTPServer(s *http.Server, srv UserServiceHTTPServer) {
 	r.Handle("GET", "/v1/users-list", _UserService_ListUsers0_HTTP_Handler(srv))
 	r.Handle("PUT", "/v1/users/update", _UserService_UpdateUser0_HTTP_Handler(srv))
 	r.Handle("DELETE", "/v1/users/{id}", _UserService_DeleteUser0_HTTP_Handler(srv))
+	r.Handle("POST", "/v1/users/login", _UserService_Login0_HTTP_Handler(srv))
 }
 
 func _UserService_CreateUser0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
@@ -152,6 +156,25 @@ func _UserService_DeleteUser0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx h
 	}
 }
 
+func _UserService_Login0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in LoginUserRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUserServiceLogin)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.Login(ctx, req.(*LoginUserRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*LoginUserReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type UserServiceHTTPClient interface {
 	// CreateUser CreateUser creates a new user.
 	CreateUser(ctx context.Context, req *CreateUserRequest, opts ...http.CallOption) (rsp *User, err error)
@@ -161,6 +184,8 @@ type UserServiceHTTPClient interface {
 	GetUser(ctx context.Context, req *GetUserRequest, opts ...http.CallOption) (rsp *User, err error)
 	// ListUsers ListUsers returns a paginated list of users.
 	ListUsers(ctx context.Context, req *ListUsersRequest, opts ...http.CallOption) (rsp *UserSet, err error)
+	// Login使用post来请求token
+	Login(ctx context.Context, req *LoginUserRequest, opts ...http.CallOption) (rsp *LoginUserReply, err error)
 	// UpdateUser UpdateUser partially updates a user using a field mask.
 	UpdateUser(ctx context.Context, req *UpdateUserRequest, opts ...http.CallOption) (rsp *User, err error)
 }
@@ -236,6 +261,24 @@ func (c *UserServiceHTTPClientImpl) ListUsers(ctx context.Context, in *ListUsers
 		http.PathTemplate(pattern),
 	}, opts...)
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Login使用post来请求token
+func (c *UserServiceHTTPClientImpl) Login(ctx context.Context, in *LoginUserRequest, opts ...http.CallOption) (*LoginUserReply, error) {
+	var out LoginUserReply
+	pattern := "/v1/users/login"
+	path := http.BuildPath(pattern, in)
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.ContentType("application/protojson"),
+		http.Operation(OperationUserServiceLogin),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

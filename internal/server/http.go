@@ -19,7 +19,8 @@ func NewHTTPServer(c *conf.Server, todo *service.TodoService, greeter *service.G
 		http.Middleware(
 			recovery.Recovery(),
 			tracing.Server(),
-			Logmiddle(),
+			Logmiddle(),      //日志中间件
+			AuthMiddleware(), //认证中间件
 			validate.Validator(func(req any) error {
 				if msg, ok := req.(proto.Message); ok {
 					if err := fieldbehavior.ValidateRequiredFields(msg); err != nil {

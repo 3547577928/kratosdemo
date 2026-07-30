@@ -49,6 +49,21 @@ service UserService {
       delete: "/v1/users/{id}"
     };
   }
+  //使用post来请求token
+  rpc Login (LoginUserRequest) returns (LoginUserReply) {
+    option (google.api.http) = {
+      post: "/v1/users/login"
+      body: "*"  // 将 LoginUserRequest 的字段映射到 HTTP 请求体 (Body) 中
+    };
+  }
+}
+message LoginUserRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginUserReply {
+  string token = 1;
 }
 message DeleteUserReply {
     int64 code = 1;

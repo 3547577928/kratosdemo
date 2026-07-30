@@ -34,6 +34,7 @@ type UserRepo interface {
 	CreateUser(context.Context, *User) (*User, error)
 	UpdateUser(context.Context, *User) (*User, error)
 	DeleteUser(context.Context, int64) error
+	Login(context.Context, string, string) (*v1.LoginUserReply, error)
 }
 
 // UserUsecase is a User usecase.
@@ -44,6 +45,10 @@ type UserUsecase struct {
 // NewUserUsecase new a User usecase.相当于构造函数
 func NewUserUsecase(repo UserRepo) *UserUsecase {
 	return &UserUsecase{repo: repo}
+}
+
+func (uc *UserUsecase) Login(ctx context.Context, username string, password string) (*v1.LoginUserReply, error) {
+	return uc.repo.Login(ctx, username, password)
 }
 
 // GetUser returns a user by ID.

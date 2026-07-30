@@ -128,6 +128,14 @@ func (s *UserService) DeleteUser(ctx context.Context, req *v1.DeleteUserRequest)
 	}, nil
 }
 
+func (s *UserService) Login(ctx context.Context, req *v1.LoginUserRequest) (*v1.LoginUserReply, error) {
+	login, err := s.uc.Login(ctx, req.GetUsername(), req.GetPassword())
+	if err != nil {
+		return nil, err
+	}
+	return login, nil
+}
+
 func convertUser(in *v1.User) *biz.User {
 	if in == nil {
 		return nil

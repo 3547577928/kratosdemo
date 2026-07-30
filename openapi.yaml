@@ -308,6 +308,25 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/todo.v1.User'
+    /v1/users/login:
+        post:
+            tags:
+                - UserService
+            description: 使用post来请求token
+            operationId: UserService_Login
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/todo.v1.LoginUserRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/todo.v1.LoginUserReply'
     /v1/users/update:
         put:
             tags:
@@ -391,6 +410,18 @@ components:
                 name:
                     type: string
             description: The request message containing the user's name.
+        todo.v1.LoginUserReply:
+            type: object
+            properties:
+                token:
+                    type: string
+        todo.v1.LoginUserRequest:
+            type: object
+            properties:
+                username:
+                    type: string
+                password:
+                    type: string
         todo.v1.SyncTodoRequest:
             type: object
             properties:

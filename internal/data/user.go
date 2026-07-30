@@ -3,6 +3,8 @@ package data
 import (
 	"context"
 	"strings"
+	v1 "testdemo/api/todo/v1"
+	"testdemo/pkg/auth"
 
 	"testdemo/ent"
 	"testdemo/ent/predicate"
@@ -172,6 +174,41 @@ func (r *userRepo) DeleteUser(ctx context.Context, id int64) error {
 		return biz.ErrUserNotFound
 	}
 	return err
+}
+func (r *userRepo) Login(ctx context.Context, username string, password string) (*v1.LoginUserReply, error) {
+	if strings.TrimSpace(username) == "" || strings.TrimSpace(password) == "" {
+		return nil, biz.ErrUserInvalidArgument
+	}
+	// 通过 username（支持 name 或 email 登录）查询用户
+	u, err := r.client(ctx).User.Query().
+		Where(user.Or(user.Name(username), user.Email(username))).
+		First(ctx)
+	if ent.IsNotFound(err) {
+		return nil, biz.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// 简单密码比对（生产环境应使用 bcrypt 等哈希验证）
+	if u.Password != password {
+		return nil, biz.ErrUserInvalidArgument
+	}
+
+	// 生成 JWT Token
+	const (
+		defaultSecret = "testdemo-jwt-secret-change-me-in-production"
+		defaultRole   = "user"
+		defaultExpire = 24 // 24小时过期
+	)
+	token, err := auth.GenerateToken(defaultSecret, u.ID, u.Name, defaultRole, defaultExpire)
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.LoginUserReply{
+		Token: token,
+	}, nil
 }
 
 // ---------- helpers ----------
