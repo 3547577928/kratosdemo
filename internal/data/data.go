@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kratos/kratos/v3/log"
 	"github.com/google/wire"
+	"github.com/redis/go-redis/v9"
 )
 
 // ProviderSet is data providers.
@@ -20,6 +21,7 @@ var ProviderSet = wire.NewSet(NewData, NewTodoRepo, NewUserRepo)
 // Data wraps long-lived storage clients.
 type Data struct {
 	ent *ent.Client
+	rdb *redis.Client
 }
 
 // NewData opens an ent client backed by the configured database.
@@ -33,7 +35,6 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		return nil, func() {}, fmt.Errorf("failed opening ent client: %w", err)
 	}
 
-	// Run migrations (optional; remove in favor of external migrations if preferred)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := client.Schema.Create(ctx); err != nil {
@@ -41,9 +42,24 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		return nil, func() {}, fmt.Errorf("failed creating schema resources: %w", err)
 	}
 
+	var rdb *redis.Client
+	if c.GetRedis() != nil && c.Redis.Addr != "" {
+		opts := &redis.Options{Addr: c.Redis.Addr}
+		if c.Redis.ReadTimeout != nil {
+			opts.ReadTimeout = c.Redis.ReadTimeout.AsDuration()
+		}
+		if c.Redis.WriteTimeout != nil {
+			opts.WriteTimeout = c.Redis.WriteTimeout.AsDuration()
+		}
+		rdb = redis.NewClient(opts)
+	}
+
 	cleanup := func() {
 		log.Info("closing the data resources")
+		if rdb != nil {
+			_ = rdb.Close()
+		}
 		_ = client.Close()
 	}
-	return &Data{ent: client}, cleanup, nil
+	return &Data{ent: client, rdb: rdb}, cleanup, nil
 }
