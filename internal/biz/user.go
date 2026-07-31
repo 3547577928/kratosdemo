@@ -6,6 +6,7 @@ import (
 	"time"
 
 	v1 "testdemo/api/todo/v1"
+	"testdemo/pkg/auth"
 
 	"github.com/go-kratos/kratos/v3/errors"
 )
@@ -27,14 +28,24 @@ type User struct {
 	UpdateTime time.Time
 }
 
+const (
+	defaultLoginSecret = "testdemo-jwt-secret-change-me-in-production"
+	defaultLoginRole   = "user"
+	defaultLoginExpire = 24
+)
+
+type LoginResult struct {
+	Token string
+}
+
 // UserRepo is a user repo interface.
 type UserRepo interface {
 	FindByID(context.Context, int64) (*User, error)
+	FindByAccount(context.Context, string) (*User, error)
 	ListUsers(context.Context, ...ListOption) ([]*User, error)
 	CreateUser(context.Context, *User) (*User, error)
 	UpdateUser(context.Context, *User) (*User, error)
 	DeleteUser(context.Context, int64) error
-	Login(context.Context, string, string) (*v1.LoginUserReply, error)
 }
 
 // UserUsecase is a User usecase.
@@ -47,8 +58,23 @@ func NewUserUsecase(repo UserRepo) *UserUsecase {
 	return &UserUsecase{repo: repo}
 }
 
-func (uc *UserUsecase) Login(ctx context.Context, username string, password string) (*v1.LoginUserReply, error) {
-	return uc.repo.Login(ctx, username, password)
+func (uc *UserUsecase) Login(ctx context.Context, username string, password string) (*LoginResult, error) {
+	username = strings.TrimSpace(username)
+	if username == "" || strings.TrimSpace(password) == "" {
+		return nil, ErrUserInvalidArgument
+	}
+	user, err := uc.repo.FindByAccount(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	if user.Password != password {
+		return nil, ErrUserInvalidArgument
+	}
+	token, err := auth.GenerateToken(defaultLoginSecret, user.ID, user.Name, defaultLoginRole, defaultLoginExpire)
+	if err != nil {
+		return nil, err
+	}
+	return &LoginResult{Token: token}, nil
 }
 
 // GetUser returns a user by ID.
@@ -63,18 +89,23 @@ func (uc *UserUsecase) ListUsers(ctx context.Context, opts ...ListOption) ([]*Us
 
 // CreateUser creates a user.
 func (uc *UserUsecase) CreateUser(ctx context.Context, user *User) (*User, error) {
-	if err := validateUser(user); err != nil {
+	normalized, err := normalizeNewUser(user)
+	if err != nil {
 		return nil, err
 	}
-	return uc.repo.CreateUser(ctx, user)
+	return uc.repo.CreateUser(ctx, normalized)
 }
 
 // UpdateUser updates a user.
 func (uc *UserUsecase) UpdateUser(ctx context.Context, user *User) (*User, error) {
-	if user == nil || user.ID <= 0 {
-		return nil, ErrUserInvalidArgument
+	normalized, err := normalizeUpdateUser(user)
+	if err != nil {
+		return nil, err
 	}
-	return uc.repo.UpdateUser(ctx, user)
+	if !hasUserChanges(normalized) {
+		return uc.repo.FindByID(ctx, normalized.ID)
+	}
+	return uc.repo.UpdateUser(ctx, normalized)
 }
 
 // DeleteUser deletes a user.
@@ -85,15 +116,29 @@ func (uc *UserUsecase) DeleteUser(ctx context.Context, id int64) error {
 	return uc.repo.DeleteUser(ctx, id)
 }
 
-func validateUser(user *User) error {
+func normalizeNewUser(user *User) (*User, error) {
 	if user == nil {
-		return ErrUserInvalidArgument
+		return nil, ErrUserInvalidArgument
 	}
-	if strings.TrimSpace(user.Name) == "" {
-		return ErrUserInvalidArgument
+	clone := *user
+	clone.Name = strings.TrimSpace(clone.Name)
+	clone.Email = strings.TrimSpace(clone.Email)
+	if clone.Name == "" || clone.Email == "" || strings.TrimSpace(clone.Password) == "" {
+		return nil, ErrUserInvalidArgument
 	}
-	if strings.TrimSpace(user.Email) == "" {
-		return ErrUserInvalidArgument
+	return &clone, nil
+}
+
+func normalizeUpdateUser(user *User) (*User, error) {
+	if user == nil || user.ID <= 0 {
+		return nil, ErrUserInvalidArgument
 	}
-	return nil
+	clone := *user
+	clone.Name = strings.TrimSpace(clone.Name)
+	clone.Email = strings.TrimSpace(clone.Email)
+	return &clone, nil
+}
+
+func hasUserChanges(user *User) bool {
+	return user != nil && (user.Name != "" || user.Email != "" || user.Password != "")
 }

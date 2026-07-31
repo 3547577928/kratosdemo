@@ -129,11 +129,11 @@ func (s *UserService) DeleteUser(ctx context.Context, req *v1.DeleteUserRequest)
 }
 
 func (s *UserService) Login(ctx context.Context, req *v1.LoginUserRequest) (*v1.LoginUserReply, error) {
-	login, err := s.uc.Login(ctx, req.GetUsername(), req.GetPassword())
+	result, err := s.uc.Login(ctx, req.GetUsername(), req.GetPassword())
 	if err != nil {
 		return nil, err
 	}
-	return login, nil
+	return &v1.LoginUserReply{Token: result.Token}, nil
 }
 
 func convertUser(in *v1.User) *biz.User {
