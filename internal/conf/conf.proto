@@ -44,6 +44,8 @@ message Data {
     string addr = 2;
     google.protobuf.Duration read_timeout = 3;
     google.protobuf.Duration write_timeout = 4;
+    // 用户缓存过期时间。
+    google.protobuf.Duration user_cache_ttl = 5;
   }
   Database database = 1;
   Redis redis = 2;

@@ -22,6 +22,9 @@ var ProviderSet = wire.NewSet(NewData, NewTodoRepo, NewUserRepo)
 type Data struct {
 	ent *ent.Client
 	rdb *redis.Client
+
+	// userCacheTTL 为用户缓存过期时间，来自配置文件。
+	userCacheTTL time.Duration
 }
 
 // NewData opens an ent client backed by the configured database.
@@ -42,16 +45,23 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		return nil, func() {}, fmt.Errorf("failed creating schema resources: %w", err)
 	}
 
+	// 默认缓存 TTL 为 5 分钟；如果配置文件显式指定，则使用配置值。
+	userCacheTTL := 5 * time.Minute
 	var rdb *redis.Client
-	if c.GetRedis() != nil && c.Redis.Addr != "" {
-		opts := &redis.Options{Addr: c.Redis.Addr}
-		if c.Redis.ReadTimeout != nil {
-			opts.ReadTimeout = c.Redis.ReadTimeout.AsDuration()
+	if c.GetRedis() != nil {
+		if c.Redis.UserCacheTtl != nil && c.Redis.UserCacheTtl.AsDuration() > 0 {
+			userCacheTTL = c.Redis.UserCacheTtl.AsDuration()
 		}
-		if c.Redis.WriteTimeout != nil {
-			opts.WriteTimeout = c.Redis.WriteTimeout.AsDuration()
+		if c.Redis.Addr != "" {
+			opts := &redis.Options{Addr: c.Redis.Addr}
+			if c.Redis.ReadTimeout != nil {
+				opts.ReadTimeout = c.Redis.ReadTimeout.AsDuration()
+			}
+			if c.Redis.WriteTimeout != nil {
+				opts.WriteTimeout = c.Redis.WriteTimeout.AsDuration()
+			}
+			rdb = redis.NewClient(opts)
 		}
-		rdb = redis.NewClient(opts)
 	}
 
 	cleanup := func() {
@@ -61,5 +71,5 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		}
 		_ = client.Close()
 	}
-	return &Data{ent: client, rdb: rdb}, cleanup, nil
+	return &Data{ent: client, rdb: rdb, userCacheTTL: userCacheTTL}, cleanup, nil
 }

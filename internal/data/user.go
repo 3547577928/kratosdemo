@@ -23,9 +23,20 @@ type userRepo struct {
 	data *Data
 }
 
-// NewUserRepo creates a new UserRepo instance implemented with ent.
+// userRepo 负责 User 的数据访问实现。
+//
+// 缓存策略：Cache-Aside（旁路缓存）
+// - 真实数据只按 id 存一份：testdemo:user:data:{id} -> User(JSON)
+// - name/email 只作为“索引”存储：
+//   - testdemo:user:index:name:{base64(name)}  -> id
+//   - testdemo:user:index:email:{base64(email)} -> id
+//
+// 读：先查 Redis（命中直接返回），未命中查 DB 并回填 Redis。
+// 写：写 DB 成功后写入/更新 Redis；更新时需要清理旧索引，避免脏索引。
+
+// NewUserRepo 创建用户仓储实现，并以 biz.UserRepo 接口形式返回。
 func NewUserRepo(data *Data) biz.UserRepo {
-	//返回的是接口
+	// 返回接口，屏蔽 data 层具体实现。
 	return &userRepo{data: data}
 }
 
@@ -44,8 +55,9 @@ func (r *userRepo) ListUsers(ctx context.Context, opts ...biz.ListOption) ([]*bi
 
 	query := r.client(ctx).User.Query()
 
-	// Apply order_by via ent-generated user.ByXxx helpers. When the AIP
-	// OrderBy value only exposes extract ordered columns we fall back to stable id ASC.
+	// 处理排序参数。
+	// 当能够识别 AIP OrderBy 中的字段时，使用 ent 生成的 ByXxx 排序；
+	// 如果无法识别，则回退到按 id 升序，保证结果顺序稳定。
 	if columns := extractOrderColumns(&options.OrderBy); len(columns) > 0 {
 		orders := make([]user.OrderOption, 0, len(columns))
 		for _, col := range columns {
@@ -93,7 +105,7 @@ func (r *userRepo) ListUsers(ctx context.Context, opts ...biz.ListOption) ([]*bi
 		query = query.Order(user.ByID())
 	}
 
-	// Apply filter when the a non-empty AIP filter expression is detected.
+	// 处理过滤条件：当请求中包含非空 AIP 过滤表达式时，尝试转换为 ent 谓词。
 	if hasFilter(options.Filter) {
 		p := translateFilter(options.Filter)
 		if p != nil {
@@ -101,7 +113,7 @@ func (r *userRepo) ListUsers(ctx context.Context, opts ...biz.ListOption) ([]*bi
 		}
 	}
 
-	// Apply pagination
+	// 处理分页参数。
 	query = query.Offset(options.Offset).Limit(options.Limit)
 
 	list, err := query.All(ctx)
@@ -115,6 +127,10 @@ func (r *userRepo) ListUsers(ctx context.Context, opts ...biz.ListOption) ([]*bi
 	return result, nil
 }
 
+// FindByID 通过主键查询用户。
+//
+// 优先走 Redis 主数据缓存（cacheKeyUserData），命中则不访问数据库；
+// 未命中再查 DB 并回填缓存，同时写入 name/email 索引。
 func (r *userRepo) FindByID(ctx context.Context, id int64) (*biz.User, error) {
 	start := time.Now()
 
@@ -152,6 +168,14 @@ func (r *userRepo) FindByID(ctx context.Context, id int64) (*biz.User, error) {
 	return result, nil
 }
 
+// FindByAccount 通过账号查询用户。
+//
+// account 支持：用户名 或 邮箱。
+// 缓存命中路径：
+// 1) 先从索引 key（name/email）取出对应 id
+// 2) 再用 id 去取主数据（User JSON）
+//
+// 这样可以保证：User 主数据只缓存一份，索引只是轻量映射。
 func (r *userRepo) FindByAccount(ctx context.Context, account string) (*biz.User, error) {
 	start := time.Now()
 
@@ -291,26 +315,47 @@ func (r *userRepo) DeleteUser(ctx context.Context, id int64) error {
 	return nil
 }
 
-const userCacheTTL = 5 * time.Minute
-
+// cacheEnabled 判断当前仓储是否启用了 Redis 缓存。
 func (r *userRepo) cacheEnabled() bool {
 	return r != nil && r.data != nil && r.data.rdb != nil
 }
 
+// cacheTTL 返回用户缓存过期时间。
+// 统一从 Data 读取配置值，避免把 TTL 写死在仓储代码中。
+func (r *userRepo) cacheTTL() time.Duration {
+	if r == nil || r.data == nil || r.data.userCacheTTL <= 0 {
+		return 5 * time.Minute
+	}
+	return r.data.userCacheTTL
+}
+
+// cacheKeyUserData：用户主数据 key（真实数据只存这里）。
 func (r *userRepo) cacheKeyUserData(id int64) string {
 	return fmt.Sprintf("testdemo:user:data:%d", id)
 }
 
+// cacheKeyUserNameIndex：用户名索引 key（value 为对应 id）。
+// 使用 base64 是为了避免 name 中出现空格、冒号等特殊字符导致 key 不可控。
 func (r *userRepo) cacheKeyUserNameIndex(name string) string {
 	encoded := base64.RawURLEncoding.EncodeToString([]byte(name))
 	return "testdemo:user:index:name:" + encoded
 }
 
+// cacheKeyUserEmailIndex：邮箱索引 key（value 为对应 id）。
 func (r *userRepo) cacheKeyUserEmailIndex(email string) string {
 	encoded := base64.RawURLEncoding.EncodeToString([]byte(email))
 	return "testdemo:user:index:email:" + encoded
 }
 
+// cacheGetIndexedUser：通过“索引 key -> id -> 主数据 key”拿到用户。
+//
+// 1) 先按 name 索引查一次
+// 2) 再按 email 索引查一次
+// 命中任意一个索引都可以返回。
+//
+// 这里做了轻量的自愈：
+// - 索引 value 解析出错（非数字/<=0）会删除该索引 key
+// - 索引存在但主数据不存在，认为索引已脏，也删除该索引 key
 func (r *userRepo) cacheGetIndexedUser(ctx context.Context, account string) (*biz.User, bool) {
 	for _, key := range []string{r.cacheKeyUserNameIndex(account), r.cacheKeyUserEmailIndex(account)} {
 		idStr, err := r.data.rdb.Get(ctx, key).Result()
@@ -330,6 +375,8 @@ func (r *userRepo) cacheGetIndexedUser(ctx context.Context, account string) (*bi
 	return nil, false
 }
 
+// cacheGetUser 根据主数据 key 读取 Redis 中缓存的用户对象。
+// 如果数据损坏或格式不合法，会删除脏数据并返回未命中。
 func (r *userRepo) cacheGetUser(ctx context.Context, key string) (*biz.User, bool) {
 	b, err := r.data.rdb.Get(ctx, key).Bytes()
 	if err != nil {
@@ -347,6 +394,9 @@ func (r *userRepo) cacheGetUser(ctx context.Context, key string) (*biz.User, boo
 	return &u, true
 }
 
+// cacheSetUser 将用户主数据和对应索引同时写入 Redis。
+// - 主数据：id -> User JSON
+// - 索引：name/email -> id
 func (r *userRepo) cacheSetUser(ctx context.Context, u *biz.User) {
 	if u == nil {
 		return
@@ -355,11 +405,13 @@ func (r *userRepo) cacheSetUser(ctx context.Context, u *biz.User) {
 	if err != nil {
 		return
 	}
-	_ = r.data.rdb.Set(ctx, r.cacheKeyUserData(u.ID), b, userCacheTTL).Err()
-	_ = r.data.rdb.Set(ctx, r.cacheKeyUserNameIndex(u.Name), strconv.FormatInt(u.ID, 10), userCacheTTL).Err()
-	_ = r.data.rdb.Set(ctx, r.cacheKeyUserEmailIndex(u.Email), strconv.FormatInt(u.ID, 10), userCacheTTL).Err()
+	ttl := r.cacheTTL()
+	_ = r.data.rdb.Set(ctx, r.cacheKeyUserData(u.ID), b, ttl).Err()
+	_ = r.data.rdb.Set(ctx, r.cacheKeyUserNameIndex(u.Name), strconv.FormatInt(u.ID, 10), ttl).Err()
+	_ = r.data.rdb.Set(ctx, r.cacheKeyUserEmailIndex(u.Email), strconv.FormatInt(u.ID, 10), ttl).Err()
 }
 
+// cacheDel 批量删除指定的缓存 key，常用于删除主数据和旧索引。
 func (r *userRepo) cacheDel(ctx context.Context, keys ...string) {
 	ks := make([]string, 0, len(keys))
 	for _, k := range keys {
@@ -373,6 +425,7 @@ func (r *userRepo) cacheDel(ctx context.Context, keys ...string) {
 	_ = r.data.rdb.Del(ctx, ks...).Err()
 }
 
+// logUserLookup 记录用户查询日志，标明结果来源以及缓存/数据库/总耗时。
 func (r *userRepo) logUserLookup(method string, source string, id int64, cacheCost time.Duration, dbCost time.Duration, totalCost time.Duration) {
 	if cacheCost == 0 && dbCost == 0 {
 		log.Info("user lookup", "method", method, "source", source, "id", id, "cost", totalCost)
@@ -381,34 +434,33 @@ func (r *userRepo) logUserLookup(method string, source string, id int64, cacheCo
 	log.Info("user lookup", "method", method, "source", source, "id", id, "cache_cost", cacheCost, "db_cost", dbCost, "total_cost", totalCost)
 }
 
-// ---------- helpers ----------
+// ---------- 辅助函数 ----------
 
 type orderCol struct {
 	path string
 	desc bool
 }
 
-// extractOrderColumns extracts ordered column names from an AIP ordering.OrderBy
-// without reaching into unexported fields (Column/Columns layout differs between
-// AIP versions). Returns nil when the order value is empty so the caller can
-// fall back to the default stable order.
+// extractOrderColumns 从 AIP 的 ordering.OrderBy 中提取排序字段。
+//
+// 这里只依赖公开接口，避免直接访问内部字段导致不同版本的 AIP 包不兼容。
+// 当排序值为空时返回 nil，由调用方回退到默认稳定排序。
 func extractOrderColumns(ob any) []orderCol {
 	if ob == nil {
 		return nil
 	}
-	// The only stable public API is String(). An empty/whitespace string means
-	// no explicit order was supplied; fall back to default.
+	// 当前唯一稳定可用的公开能力是 String()。
+	// 当字符串为空或仅包含空白字符时，说明调用方没有显式传入排序条件。
 	if s, ok := ob.(interface{ String() string }); ok && strings.TrimSpace(s.String()) == "" {
 		return nil
 	}
-	// If explicit order is provided but the exact layout isn't pinned, return
-	// nil. Real AIP column extraction can be wired here when needed.
+	// 即使传入了排序参数，如果当前无法安全解析其内部结构，也返回 nil。
+	// 后续如果明确锁定 AIP 版本，可以在这里补充真实的字段提取逻辑。
 	return nil
 }
 
-// hasFilter reports whether the supplied AIP filtering.Filter contains a
-// non-empty expression. Only public methods are probed so upgrades of the
-// AIP package don't break compilation.
+// hasFilter 判断传入的 AIP filtering.Filter 是否包含有效的过滤表达式。
+// 这里只探测公开方法，避免 AIP 包升级后因内部结构变化导致编译失败。
 func hasFilter(f filtering.Filter) bool {
 	type emptyIface interface{ Empty() bool }
 	if e, ok := any(f).(emptyIface); ok {
@@ -421,9 +473,8 @@ func hasFilter(f filtering.Filter) bool {
 	return false
 }
 
-// translateFilter converts an AIP filter tree to an ent predicate.User.
-// Returns nil when no filter translation is possible so the query still
-// executes with ordering and pagination intact.
+// translateFilter 将 AIP 过滤树转换为 ent 的 predicate.User。
+// 如果当前无法完成转换，则返回 nil，让查询仍然可以带着排序和分页继续执行。
 func translateFilter(f filtering.Filter) predicate.User {
 	_ = f
 	return nil

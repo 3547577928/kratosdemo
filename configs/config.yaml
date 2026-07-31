@@ -13,6 +13,7 @@ data:
     addr: 127.0.0.1:6379
     read_timeout: 0.2s
     write_timeout: 0.2s
+    user_cache_ttl: 3000s
 registry:
   consul:
     address: 127.0.0.1:8500
