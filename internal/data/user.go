@@ -2,7 +2,11 @@ package data
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"strings"
+	"time"
 
 	"testdemo/ent"
 	"testdemo/ent/predicate"
@@ -10,6 +14,7 @@ import (
 	"testdemo/internal/biz"
 
 	"entgo.io/ent/dialect/sql"
+	"github.com/go-kratos/kratos/v3/log"
 	"go.einride.tech/aip/filtering"
 )
 
@@ -110,27 +115,94 @@ func (r *userRepo) ListUsers(ctx context.Context, opts ...biz.ListOption) ([]*bi
 }
 
 func (r *userRepo) FindByID(ctx context.Context, id int64) (*biz.User, error) {
+	start := time.Now()
+
+	var cacheCost time.Duration
+	if r.cacheEnabled() {
+		cacheStart := time.Now()
+		if u, ok := r.cacheGetUser(ctx, r.cacheKeyUserID(id)); ok {
+			cacheCost = time.Since(cacheStart)
+			r.logUserLookup("FindByID", "cache", u.ID, cacheCost, 0, time.Since(start))
+			return u, nil
+		}
+		cacheCost = time.Since(cacheStart)
+	}
+
+	dbStart := time.Now()
 	u, err := r.client(ctx).User.Get(ctx, id)
+	dbCost := time.Since(dbStart)
 	if ent.IsNotFound(err) {
+		r.logUserLookup("FindByID", "db_not_found", id, cacheCost, dbCost, time.Since(start))
 		return nil, biz.ErrUserNotFound
 	}
 	if err != nil {
+		r.logUserLookup("FindByID", "db_error", id, cacheCost, dbCost, time.Since(start))
 		return nil, err
 	}
-	return toBizUser(u), nil
+	result := toBizUser(u)
+	if r.cacheEnabled() {
+		r.cacheSetUser(ctx, result,
+			r.cacheKeyUserID(result.ID),
+			r.cacheKeyUserAccount(result.Name),
+			r.cacheKeyUserAccount(result.Email),
+		)
+	}
+	from := "db"
+	if r.cacheEnabled() {
+		from = "db_cache_miss"
+	}
+	r.logUserLookup("FindByID", from, result.ID, cacheCost, dbCost, time.Since(start))
+	return result, nil
 }
 
 func (r *userRepo) FindByAccount(ctx context.Context, account string) (*biz.User, error) {
+	start := time.Now()
+
+	account = strings.TrimSpace(account)
+	if account == "" {
+		r.logUserLookup("FindByAccount", "invalid_argument", 0, 0, 0, time.Since(start))
+		return nil, biz.ErrUserInvalidArgument
+	}
+
+	var cacheCost time.Duration
+	if r.cacheEnabled() {
+		cacheStart := time.Now()
+		if u, ok := r.cacheGetUser(ctx, r.cacheKeyUserAccount(account)); ok {
+			cacheCost = time.Since(cacheStart)
+			r.logUserLookup("FindByAccount", "cache", u.ID, cacheCost, 0, time.Since(start))
+			return u, nil
+		}
+		cacheCost = time.Since(cacheStart)
+	}
+
+	dbStart := time.Now()
 	u, err := r.client(ctx).User.Query().
 		Where(user.Or(user.Name(account), user.Email(account))).
 		First(ctx)
+	dbCost := time.Since(dbStart)
 	if ent.IsNotFound(err) {
+		r.logUserLookup("FindByAccount", "db_not_found", 0, cacheCost, dbCost, time.Since(start))
 		return nil, biz.ErrUserNotFound
 	}
 	if err != nil {
+		r.logUserLookup("FindByAccount", "db_error", 0, cacheCost, dbCost, time.Since(start))
 		return nil, err
 	}
-	return toBizUser(u), nil
+	result := toBizUser(u)
+	if r.cacheEnabled() {
+		r.cacheSetUser(ctx, result,
+			r.cacheKeyUserID(result.ID),
+			r.cacheKeyUserAccount(result.Name),
+			r.cacheKeyUserAccount(result.Email),
+			r.cacheKeyUserAccount(account),
+		)
+	}
+	from := "db"
+	if r.cacheEnabled() {
+		from = "db_cache_miss"
+	}
+	r.logUserLookup("FindByAccount", from, result.ID, cacheCost, dbCost, time.Since(start))
+	return result, nil
 }
 
 func (r *userRepo) CreateUser(ctx context.Context, do *biz.User) (*biz.User, error) {
@@ -145,7 +217,15 @@ func (r *userRepo) CreateUser(ctx context.Context, do *biz.User) (*biz.User, err
 	if err != nil {
 		return nil, err
 	}
-	return toBizUser(created), nil
+	result := toBizUser(created)
+	if r.cacheEnabled() {
+		r.cacheSetUser(ctx, result,
+			r.cacheKeyUserID(result.ID),
+			r.cacheKeyUserAccount(result.Name),
+			r.cacheKeyUserAccount(result.Email),
+		)
+	}
+	return result, nil
 }
 
 func (r *userRepo) UpdateUser(ctx context.Context, do *biz.User) (*biz.User, error) {
@@ -169,15 +249,114 @@ func (r *userRepo) UpdateUser(ctx context.Context, do *biz.User) (*biz.User, err
 	if err != nil {
 		return nil, err
 	}
-	return toBizUser(updated), nil
+	result := toBizUser(updated)
+	if r.cacheEnabled() {
+		r.cacheSetUser(ctx, result,
+			r.cacheKeyUserID(result.ID),
+			r.cacheKeyUserAccount(result.Name),
+			r.cacheKeyUserAccount(result.Email),
+		)
+	}
+	return result, nil
 }
 
 func (r *userRepo) DeleteUser(ctx context.Context, id int64) error {
+	var existing *ent.User
+	if r.cacheEnabled() {
+		u, err := r.client(ctx).User.Get(ctx, id)
+		if ent.IsNotFound(err) {
+			return biz.ErrUserNotFound
+		}
+		if err != nil {
+			return err
+		}
+		existing = u
+	}
+
 	err := r.client(ctx).User.DeleteOneID(id).Exec(ctx)
 	if ent.IsNotFound(err) {
 		return biz.ErrUserNotFound
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if r.cacheEnabled() {
+		r.cacheDel(ctx,
+			r.cacheKeyUserID(id),
+			r.cacheKeyUserAccount(existing.Name),
+			r.cacheKeyUserAccount(existing.Email),
+		)
+	}
+	return nil
+}
+
+const userCacheTTL = 5 * time.Minute
+
+func (r *userRepo) cacheEnabled() bool {
+	return r != nil && r.data != nil && r.data.rdb != nil
+}
+
+func (r *userRepo) cacheKeyUserID(id int64) string {
+	return fmt.Sprintf("testdemo:user:id:%d", id)
+}
+
+func (r *userRepo) cacheKeyUserAccount(account string) string {
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(account))
+	return "testdemo:user:acct:" + encoded
+}
+
+func (r *userRepo) cacheGetUser(ctx context.Context, key string) (*biz.User, bool) {
+	b, err := r.data.rdb.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, false
+	}
+	var u biz.User
+	if err := json.Unmarshal(b, &u); err != nil {
+		_ = r.data.rdb.Del(ctx, key).Err()
+		return nil, false
+	}
+	if u.ID <= 0 {
+		_ = r.data.rdb.Del(ctx, key).Err()
+		return nil, false
+	}
+	return &u, true
+}
+
+func (r *userRepo) cacheSetUser(ctx context.Context, u *biz.User, keys ...string) {
+	if u == nil {
+		return
+	}
+	b, err := json.Marshal(u)
+	if err != nil {
+		return
+	}
+	for _, k := range keys {
+		if k == "" {
+			continue
+		}
+		_ = r.data.rdb.Set(ctx, k, b, userCacheTTL).Err()
+	}
+}
+
+func (r *userRepo) cacheDel(ctx context.Context, keys ...string) {
+	ks := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if k != "" {
+			ks = append(ks, k)
+		}
+	}
+	if len(ks) == 0 {
+		return
+	}
+	_ = r.data.rdb.Del(ctx, ks...).Err()
+}
+
+func (r *userRepo) logUserLookup(method string, source string, id int64, cacheCost time.Duration, dbCost time.Duration, totalCost time.Duration) {
+	if cacheCost == 0 && dbCost == 0 {
+		log.Info("user lookup", "method", method, "source", source, "id", id, "cost", totalCost)
+		return
+	}
+	log.Info("user lookup", "method", method, "source", source, "id", id, "cache_cost", cacheCost, "db_cost", dbCost, "total_cost", totalCost)
 }
 
 // ---------- helpers ----------
