@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -120,9 +121,9 @@ func (r *userRepo) FindByID(ctx context.Context, id int64) (*biz.User, error) {
 	var cacheCost time.Duration
 	if r.cacheEnabled() {
 		cacheStart := time.Now()
-		if u, ok := r.cacheGetUser(ctx, r.cacheKeyUserID(id)); ok {
+		if u, ok := r.cacheGetUser(ctx, r.cacheKeyUserData(id)); ok {
 			cacheCost = time.Since(cacheStart)
-			r.logUserLookup("FindByID", "cache", u.ID, cacheCost, 0, time.Since(start))
+			r.logUserLookup("FindByID", "cache_data", u.ID, cacheCost, 0, time.Since(start))
 			return u, nil
 		}
 		cacheCost = time.Since(cacheStart)
@@ -141,11 +142,7 @@ func (r *userRepo) FindByID(ctx context.Context, id int64) (*biz.User, error) {
 	}
 	result := toBizUser(u)
 	if r.cacheEnabled() {
-		r.cacheSetUser(ctx, result,
-			r.cacheKeyUserID(result.ID),
-			r.cacheKeyUserAccount(result.Name),
-			r.cacheKeyUserAccount(result.Email),
-		)
+		r.cacheSetUser(ctx, result)
 	}
 	from := "db"
 	if r.cacheEnabled() {
@@ -167,9 +164,9 @@ func (r *userRepo) FindByAccount(ctx context.Context, account string) (*biz.User
 	var cacheCost time.Duration
 	if r.cacheEnabled() {
 		cacheStart := time.Now()
-		if u, ok := r.cacheGetUser(ctx, r.cacheKeyUserAccount(account)); ok {
+		if u, ok := r.cacheGetIndexedUser(ctx, account); ok {
 			cacheCost = time.Since(cacheStart)
-			r.logUserLookup("FindByAccount", "cache", u.ID, cacheCost, 0, time.Since(start))
+			r.logUserLookup("FindByAccount", "cache_index", u.ID, cacheCost, 0, time.Since(start))
 			return u, nil
 		}
 		cacheCost = time.Since(cacheStart)
@@ -190,12 +187,7 @@ func (r *userRepo) FindByAccount(ctx context.Context, account string) (*biz.User
 	}
 	result := toBizUser(u)
 	if r.cacheEnabled() {
-		r.cacheSetUser(ctx, result,
-			r.cacheKeyUserID(result.ID),
-			r.cacheKeyUserAccount(result.Name),
-			r.cacheKeyUserAccount(result.Email),
-			r.cacheKeyUserAccount(account),
-		)
+		r.cacheSetUser(ctx, result)
 	}
 	from := "db"
 	if r.cacheEnabled() {
@@ -219,16 +211,23 @@ func (r *userRepo) CreateUser(ctx context.Context, do *biz.User) (*biz.User, err
 	}
 	result := toBizUser(created)
 	if r.cacheEnabled() {
-		r.cacheSetUser(ctx, result,
-			r.cacheKeyUserID(result.ID),
-			r.cacheKeyUserAccount(result.Name),
-			r.cacheKeyUserAccount(result.Email),
-		)
+		r.cacheSetUser(ctx, result)
 	}
 	return result, nil
 }
 
 func (r *userRepo) UpdateUser(ctx context.Context, do *biz.User) (*biz.User, error) {
+	var previous *ent.User
+	if r.cacheEnabled() {
+		current, err := r.client(ctx).User.Get(ctx, do.ID)
+		if ent.IsNotFound(err) {
+			return nil, biz.ErrUserNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		previous = current
+	}
 	upd := r.client(ctx).User.UpdateOneID(do.ID)
 	if do.Name != "" {
 		upd.SetName(do.Name)
@@ -251,11 +250,13 @@ func (r *userRepo) UpdateUser(ctx context.Context, do *biz.User) (*biz.User, err
 	}
 	result := toBizUser(updated)
 	if r.cacheEnabled() {
-		r.cacheSetUser(ctx, result,
-			r.cacheKeyUserID(result.ID),
-			r.cacheKeyUserAccount(result.Name),
-			r.cacheKeyUserAccount(result.Email),
-		)
+		if previous != nil {
+			r.cacheDel(ctx,
+				r.cacheKeyUserNameIndex(previous.Name),
+				r.cacheKeyUserEmailIndex(previous.Email),
+			)
+		}
+		r.cacheSetUser(ctx, result)
 	}
 	return result, nil
 }
@@ -282,9 +283,9 @@ func (r *userRepo) DeleteUser(ctx context.Context, id int64) error {
 	}
 	if r.cacheEnabled() {
 		r.cacheDel(ctx,
-			r.cacheKeyUserID(id),
-			r.cacheKeyUserAccount(existing.Name),
-			r.cacheKeyUserAccount(existing.Email),
+			r.cacheKeyUserData(id),
+			r.cacheKeyUserNameIndex(existing.Name),
+			r.cacheKeyUserEmailIndex(existing.Email),
 		)
 	}
 	return nil
@@ -296,13 +297,37 @@ func (r *userRepo) cacheEnabled() bool {
 	return r != nil && r.data != nil && r.data.rdb != nil
 }
 
-func (r *userRepo) cacheKeyUserID(id int64) string {
-	return fmt.Sprintf("testdemo:user:id:%d", id)
+func (r *userRepo) cacheKeyUserData(id int64) string {
+	return fmt.Sprintf("testdemo:user:data:%d", id)
 }
 
-func (r *userRepo) cacheKeyUserAccount(account string) string {
-	encoded := base64.RawURLEncoding.EncodeToString([]byte(account))
-	return "testdemo:user:acct:" + encoded
+func (r *userRepo) cacheKeyUserNameIndex(name string) string {
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(name))
+	return "testdemo:user:index:name:" + encoded
+}
+
+func (r *userRepo) cacheKeyUserEmailIndex(email string) string {
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(email))
+	return "testdemo:user:index:email:" + encoded
+}
+
+func (r *userRepo) cacheGetIndexedUser(ctx context.Context, account string) (*biz.User, bool) {
+	for _, key := range []string{r.cacheKeyUserNameIndex(account), r.cacheKeyUserEmailIndex(account)} {
+		idStr, err := r.data.rdb.Get(ctx, key).Result()
+		if err != nil || idStr == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || id <= 0 {
+			_ = r.data.rdb.Del(ctx, key).Err()
+			continue
+		}
+		if u, ok := r.cacheGetUser(ctx, r.cacheKeyUserData(id)); ok {
+			return u, true
+		}
+		_ = r.data.rdb.Del(ctx, key).Err()
+	}
+	return nil, false
 }
 
 func (r *userRepo) cacheGetUser(ctx context.Context, key string) (*biz.User, bool) {
@@ -322,7 +347,7 @@ func (r *userRepo) cacheGetUser(ctx context.Context, key string) (*biz.User, boo
 	return &u, true
 }
 
-func (r *userRepo) cacheSetUser(ctx context.Context, u *biz.User, keys ...string) {
+func (r *userRepo) cacheSetUser(ctx context.Context, u *biz.User) {
 	if u == nil {
 		return
 	}
@@ -330,12 +355,9 @@ func (r *userRepo) cacheSetUser(ctx context.Context, u *biz.User, keys ...string
 	if err != nil {
 		return
 	}
-	for _, k := range keys {
-		if k == "" {
-			continue
-		}
-		_ = r.data.rdb.Set(ctx, k, b, userCacheTTL).Err()
-	}
+	_ = r.data.rdb.Set(ctx, r.cacheKeyUserData(u.ID), b, userCacheTTL).Err()
+	_ = r.data.rdb.Set(ctx, r.cacheKeyUserNameIndex(u.Name), strconv.FormatInt(u.ID, 10), userCacheTTL).Err()
+	_ = r.data.rdb.Set(ctx, r.cacheKeyUserEmailIndex(u.Email), strconv.FormatInt(u.ID, 10), userCacheTTL).Err()
 }
 
 func (r *userRepo) cacheDel(ctx context.Context, keys ...string) {
